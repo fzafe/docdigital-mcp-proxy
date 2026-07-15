@@ -1,0 +1,101 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DocDigital (JUNJI) - Comunicaciones recibidas",
+    "description": "Proxy para consultar y gestionar comunicaciones oficiales recibidas en DocDigital (ambiente demo/certificacion).",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "https://REEMPLAZAR-CON-TU-URL-PUBLICA.example.com" }
+  ],
+  "paths": {
+    "/recibidos": {
+      "get": {
+        "operationId": "listarRecibidos",
+        "summary": "Lista las comunicaciones oficiales recibidas por la entidad autenticada",
+        "responses": {
+          "200": { "description": "Listado de comunicaciones recibidas" }
+        }
+      }
+    },
+    "/documentos/{id}": {
+      "get": {
+        "operationId": "obtenerDetalleComunicacion",
+        "summary": "Obtiene el detalle de una comunicacion por su identificador",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Detalle de la comunicacion" }
+        }
+      }
+    },
+    "/documentos/{id}/archivo": {
+      "get": {
+        "operationId": "descargarArchivo",
+        "summary": "Descarga el contenido base64 de un archivo de una comunicacion",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "archivo_id", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Contenido del archivo en base64" }
+        }
+      }
+    },
+    "/documentos/recibidos/{id}/acusorecibo": {
+      "put": {
+        "operationId": "acuseRecibo",
+        "summary": "Da acuse de recibido a una comunicacion pendiente",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "entidadDestinataria", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Acuse de recibido registrado" }
+        }
+      }
+    },
+    "/documentos/recibidos/{id}/devolver": {
+      "put": {
+        "operationId": "rechazarComunicacion",
+        "summary": "Rechaza (devuelve) una comunicacion pendiente indicando el motivo",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "entidadDestinataria", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["motivo"],
+                "properties": {
+                  "motivo": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 255,
+                    "description": "Motivo de rechazo del documento"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Comunicacion rechazada" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "security": [{ "ApiKeyAuth": [] }]
+}
