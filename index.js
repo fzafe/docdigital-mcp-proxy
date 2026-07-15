@@ -74,14 +74,44 @@ function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
+// Fechas de DocDigital vienen como "DD-MM-YYYY HH:MM:SS"
+function parseFechaDocDigital(str) {
+  if (!str) return null;
+  const [datePart, timePart] = str.split(" ");
+  const [d, m, y] = datePart.split("-").map(Number);
+  const [hh = 0, mm = 0, ss = 0] = (timePart || "").split(":").map(Number);
+  return new Date(y, m - 1, d, hh, mm, ss);
+}
+
 function buildServer() {
   const server = new McpServer({ name: "docdigital", version: "1.0.0" });
 
   server.tool(
     "docdigital_listar_recibidos",
-    "Lista las comunicaciones oficiales recibidas por la entidad autenticada en DocDigital.",
+    "Lista las comunicaciones oficiales recibidas por la entidad autenticada en DocDigital, sin filtrar ni ordenar.",
     {},
     async () => toolResult(await apiRequest("GET", "/documentos/recibidos"))
+  );
+
+  server.tool(
+    "docdigital_pendientes_mas_antiguos",
+    "Obtiene las comunicaciones recibidas que aun estan con estado 'Pendiente acuse' para la entidad autenticada, ordenadas de la mas antigua a la mas reciente segun la fecha de creacion del documento principal. Usar esta herramienta (en vez de docdigital_listar_recibidos) para procesar la cola de pendientes en orden.",
+    {
+      limite: z.number().int().min(1).max(50).optional().describe("Cantidad maxima de comunicaciones a retornar (por defecto 5)"),
+    },
+    async ({ limite }) => {
+      const data = await apiRequest("GET", "/documentos/recibidos");
+      const items = Array.isArray(data?.result) ? data.result : [];
+      const pendientes = items.filter((item) =>
+        item?.destinatarios?.con_copia?.entidades?.some((e) => e.estado === "Pendiente acuse")
+      );
+      pendientes.sort(
+        (a, b) =>
+          parseFechaDocDigital(a?.documento_principal?.fechaCreacion) -
+          parseFechaDocDigital(b?.documento_principal?.fechaCreacion)
+      );
+      return toolResult(pendientes.slice(0, limite || 5));
+    }
   );
 
   server.tool(
@@ -93,13 +123,32 @@ function buildServer() {
 
   server.tool(
     "docdigital_descargar_archivo",
-    "Descarga el contenido en base64 de un archivo asociado a una comunicacion de DocDigital.",
+    "Descarga un archivo (documento principal o anexo) de una comunicacion de DocDigital y lo entrega como adjunto PDF legible, no como texto.",
     {
       id: z.union([z.string(), z.number()]).describe("Identificador de la comunicacion"),
       archivo_id: z.string().optional().describe("Identificador unico (UUID) del archivo dentro de la comunicacion"),
+      nombre_archivo: z.string().optional().describe("Nombre de archivo a mostrar (opcional, solo referencial)"),
     },
-    async ({ id, archivo_id }) =>
-      toolResult(await apiRequest("GET", `/documentos/${id}/archivo`, { query: { archivo_id } }))
+    async ({ id, archivo_id, nombre_archivo }) => {
+      const data = await apiRequest("GET", `/documentos/${id}/archivo`, { query: { archivo_id } });
+      const base64 = typeof data === "string" ? data : data?.result;
+      if (!base64) {
+        throw new Error("La respuesta de DocDigital no incluyo contenido de archivo (campo result vacio).");
+      }
+      return {
+        content: [
+          {
+            type: "resource",
+            resource: {
+              uri: `docdigital://documentos/${id}/archivo/${archivo_id || "principal"}`,
+              mimeType: "application/pdf",
+              blob: base64,
+              name: nombre_archivo || undefined,
+            },
+          },
+        ],
+      };
+    }
   );
 
   server.tool(
