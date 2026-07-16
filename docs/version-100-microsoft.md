@@ -1,5 +1,7 @@
 # Versión 100% Microsoft de la arquitectura "cerebro-pulpo"
 
+> **Estado: evaluada, no elegida.** La decisión vigente (julio 2026, ver `estrategia-ia-junji-2026.md`, sección 3.2) es usar ChatGPT como cerebro operativo y Claude como herramienta del equipo técnico para programar — no Copilot Studio ni Azure AI Foundry como orquestador. Este documento queda como referencia por si esa decisión se revisita más adelante.
+
 Complementa [`estrategia-ia-junji-2026.md`](./estrategia-ia-junji-2026.md). Mismo concepto (núcleo
 de orquestación + agentes departamentales), mismo Comité y misma hoja de ruta — lo que cambia acá
 es **con qué producto se construye cada pieza**, usando solo tecnología ya licenciada o nativa de

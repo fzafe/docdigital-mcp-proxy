@@ -7,16 +7,19 @@ import * as personas from "./agentes/personas.js";
 
 const PORT = process.env.PORT || 3100;
 
-// Cada "cliente" (Custom GPT de ChatGPT, conector de Claude, etc.) tiene su propia API key
-// y su propia lista de agentes departamentales autorizados. Esto es lo que permite que ambos
-// "cerebros" compartan el mismo gateway sin compartir necesariamente el mismo alcance.
+// Cada "cliente" tiene su propia API key y su propia lista de agentes departamentales
+// autorizados. Decision vigente (ver docs/estrategia-ia-junji-2026.md, 3.2): el unico
+// cliente operativo en produccion es el Custom GPT de ChatGPT; Claude se usa del lado del
+// equipo tecnico para programar y mantener este mismo gateway, no como consumidor en
+// produccion. La entrada CLAUDE_API_KEY queda de ejemplo por si mas adelante se decide
+// sumar Claude tambien como cerebro operativo, sin tener que rediseñar el gateway.
 const CLIENTES = {
   [process.env.CHATGPT_API_KEY || "dev-chatgpt-key"]: {
     nombre: "chatgpt-custom-gpt",
     agentesPermitidos: ["planificacion"],
   },
   [process.env.CLAUDE_API_KEY || "dev-claude-key"]: {
-    nombre: "claude-conector-mcp",
+    nombre: "claude-conector-mcp (ejemplo, no activo)",
     agentesPermitidos: ["planificacion", "personas"],
   },
 };

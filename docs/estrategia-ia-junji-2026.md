@@ -55,9 +55,10 @@ La metáfora es correcta y tiene una traducción técnica directa: un **núcleo 
 
 ```mermaid
 flowchart TB
-    subgraph Cerebros["Capa de modelos (los 'cerebros')"]
+    DEV["Equipo técnico<br/>(cuentas Claude, programan y mantienen)"]
+
+    subgraph Cerebro["Capa operativa (el 'cerebro' en producción)"]
         GPT["ChatGPT<br/>(Custom GPT + Actions)"]
-        CLD["Claude<br/>(conector MCP / Agent SDK)"]
     end
 
     subgraph Nucleo["Núcleo Central de IA JUNJI (orquestador MCP)"]
@@ -82,8 +83,9 @@ flowchart TB
         S5["Sistemas de párvulos<br/>(acceso agregado/anonimizado)"]
     end
 
+    DEV -. "programa / mantiene" .-> GW
+    DEV -. "programa / mantiene" .-> Tentaculos
     GPT --> GW
-    CLD --> GW
     GW --> A1 & A2 & A3 & A4 & A5 & A6 & A7
     A1 --> S3 & S4
     A2 --> S3 & S4
@@ -103,13 +105,16 @@ flowchart TB
 
 ### 3.2 Los dos "cerebros": ChatGPT y Claude, mismo cuerpo
 
-No compiten, se complementan sobre la misma infraestructura:
+**Decisión tomada (julio 2026):** JUNJI no usará Copilot Studio ni Azure AI Foundry como orquestador — la versión 100% Microsoft (Anexo B) queda documentada como alternativa evaluada, no como el camino elegido. El stack operativo es **ChatGPT + Claude**, con roles distintos y complementarios, no dos alternativas compitiendo:
 
-| | ChatGPT (Custom GPT + Actions) | Claude (conector MCP / Agent SDK) |
+| | ChatGPT (Custom GPT + Actions) | Claude (cuentas de programación) |
 |---|---|---|
-| Mejor uso en JUNJI | Interfaz conversacional para funcionarios (mesa de ayuda interna, redacción, consulta de procedimientos) | Automatización de flujos con múltiples pasos y uso de herramientas (tramitación DocDigital, generación de reportes, análisis de datos regionales) |
-| Cómo se conecta | Custom GPT Action → esquema OpenAPI (`openapi.json`, ya existe) → gateway MCP | Cliente MCP nativo, o Claude Agent SDK para agentes de backend que corren sin intervención humana |
-| Gobernanza | Igual: pasa por el mismo gateway y las mismas políticas | Igual: pasa por el mismo gateway y las mismas políticas |
+| Rol en JUNJI | **Cerebro operativo de cara a los funcionarios**: interfaz conversacional (mesa de ayuda interna, redacción, consulta de procedimientos) sobre el mismo gateway MCP | **Herramienta del equipo técnico que construye y mantiene el sistema**: se usa para programar el gateway central y cada agente departamental (el mismo uso con el que se generó el prototipo `examples/hub-agentes` de este repositorio) |
+| Quién lo usa | Funcionarios en general, vía Custom GPT | Un número acotado de cuentas, asignadas a las personas del Comité/Sección TI que efectivamente programan (no es una licencia por funcionario) |
+| Cómo se conecta | Custom GPT Action → esquema OpenAPI (`openapi.json`, ya existe) → gateway MCP | Como entorno de desarrollo (Claude Code / API) para escribir y revisar el código del gateway y los agentes; opcionalmente también como cliente MCP para automatizaciones internas del propio equipo técnico |
+| Gobernanza | Pasa por el gateway y sus políticas de acceso | No toca datos de producción directamente — programa el sistema que sí pasa por el gateway y sus políticas |
+
+Esto simplifica el punto 3.1 más abajo: **no hay que decidir "qué modelo atiende cada agente en producción"** — ChatGPT es la única interfaz operativa por ahora, y Claude queda del lado de construcción/mantención. Si más adelante se quiere sumar Claude como segundo cerebro operativo (tal como se describía en la versión anterior de este documento), es una extensión natural del mismo gateway, no un rediseño.
 
 ### 3.3 Agentes departamentales sugeridos (fase inicial)
 
