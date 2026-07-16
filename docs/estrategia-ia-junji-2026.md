@@ -167,6 +167,10 @@ Se propone un comité pequeño y con mandato claro, no una mesa amplia de picote
 
 ---
 
-## Anexo — Ejemplo de código de la arquitectura
+## Anexo A — Ejemplo de código de la arquitectura
 
 Ver `examples/hub-agentes/` en este mismo repositorio: un prototipo mínimo, en el mismo estilo que `index.js`, que muestra cómo el gateway central agrega agentes departamentales como módulos, y cómo el mismo servidor queda disponible tanto para un Custom GPT de ChatGPT (vía Action/OpenAPI) como para Claude (vía conector MCP nativo).
+
+## Anexo B — Versión 100% Microsoft
+
+Ver [`version-100-microsoft.md`](./version-100-microsoft.md): la misma arquitectura, mismo Comité y misma hoja de ruta, pero mapeada solo a productos ya licenciados o nativos de Microsoft 365/Azure (Copilot Studio, Azure AI Foundry Agent Service, Microsoft Purview, Loop, SharePoint), sin sumar Notion ni otro proveedor SaaS nuevo. Incluye el análisis de costo real (Copilot Studio no es gratis) y el tradeoff de quedar atado a un solo proveedor de modelos.
