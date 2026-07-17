@@ -47,6 +47,22 @@ OCDE y UNESCO coinciden en tres advertencias relevantes para una agencia de educ
 
 Fuentes: [OCDE — AI and education and skills](https://www.oecd.org/en/topics/sub-issues/artificial-intelligence-and-education-and-skills.html), [OCDE — Impact of AI on equity and inclusion in education](https://www.oecd.org/content/dam/oecd/en/publications/reports/2024/08/the-potential-impact-of-artificial-intelligence-on-equity-and-inclusion-in-education_0d7e9e00/15df715b-en.pdf), [UNESCO policy guidance on AI in education](https://www.tandfonline.com/doi/full/10.1080/01425692.2025.2502808)
 
+### 2.3 Política Institucional de IA de JUNJI — propuesta en cinco ejes
+
+Más de 100 servicios públicos chilenos ya usan IA de alguna forma, pero eso es adopción de herramientas sueltas, no una política institucional propia. Prácticamente ningún servicio tiene hoy una política de IA aterrizada a su propia realidad. Formalizar esto ahora, alineado con la Política Nacional, le permitiría a JUNJI ser uno de los primeros servicios del Estado en tener una política sistemática, segura y orientada a su misión — no solo un usuario más de ChatGPT.
+
+Se propone estructurar la Política Institucional de IA de JUNJI en cinco ejes, cada uno anclado a uno de los tres ejes de la Política Nacional:
+
+| Eje JUNJI | Contenido | Eje nacional al que se ancla |
+|---|---|---|
+| 1. Gestión interna | Productividad: descomprimir jefaturas, automatizar lo repetitivo (ver arquitectura "cerebro-pulpo", sección 3) | Desarrollo y Adopción |
+| 2. Calidad educativa | Apoyo a equipos técnico-pedagógicos, sin reemplazar el criterio educativo | Desarrollo y Adopción |
+| 3. Decisiones basadas en datos | Gobernanza de datos entre departamentos — ataca directo el diagnóstico "los datos no cuadran" (sección 1.3) | Factores Habilitantes |
+| 4. Uso ético y seguro | Datos de niños y niñas, trazabilidad, humano en el loop (ver sección 6, no negociable) | Gobernanza y Ética |
+| 5. Desarrollo de capacidades | Capacitación a todos los funcionarios, no solo al equipo técnico que programa (ver sección 4.2) | Factores Habilitantes |
+
+Esta política no reemplaza nada de lo ya propuesto en este documento — es el envoltorio formal (candidato a Resolución Exenta) que le da a la arquitectura, el Comité y la hoja de ruta un nombre y un mandato que sobrevive al ciclo de gobierno, en línea con la tesis "JUNJI 2050: la primera infancia como política de Estado".
+
 ---
 
 ## 3. Arquitectura propuesta: el "cerebro-pulpo"
