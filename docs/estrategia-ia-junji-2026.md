@@ -86,7 +86,7 @@ flowchart TB
     subgraph Tentaculos["Agentes por proceso end-to-end (tentáculos)"]
         A1["Oferta Programática y<br/>Evaluación Ex Ante"]
         A2["Gestión de Personas<br/>(ciclo laboral)"]
-        A3["Fiscalización y<br/>Cumplimiento"]
+        A3["Aseguramiento de<br/>la Calidad Educativa"]
         A4["Comunicaciones y<br/>Respuesta Institucional"]
         A5["Cobertura e<br/>Infraestructura"]
         A6["Gestión Financiera y<br/>Presupuestaria"]
@@ -107,7 +107,7 @@ flowchart TB
     GW --> A1 & A2 & A3 & A4 & A5 & A6 & A7
     A1 --> S3 & S4
     A2 --> S3 & S4
-    A3 --> S1 & S4
+    A3 --> S4 & S5
     A4 --> S1 & S4
     A5 --> S3 & S4
     A6 --> S3
@@ -143,12 +143,12 @@ Cada agente se define por el **proceso end-to-end** que cubre, no por el departa
 | Agente (proceso end-to-end) | Departamentos/unidades que cruza | Primer caso de uso |
 |---|---|---|
 | 1. **Oferta Programática y Evaluación Ex Ante** | Planificación (Oficina de Oferta Programática), Recursos Financieros, Calidad Educativa, Cobertura — y externamente MDSyF/DIPRES | Reconciliar automáticamente los datos de cobertura, indicadores de calidad y ejecución presupuestaria que hoy se concilian a mano para cada evaluación ex ante (ver `junji-2050-documento-maestro.md`, sección 3.5) |
-| 2. **Fiscalización y Cumplimiento** | Fiscalía, Cobertura, Calidad Educativa, Direcciones Regionales | Clasificación y borrador de respuestas a oficios (Contraloría, parlamentarios), siempre con control de legalidad humano antes de firma |
+| 2. **Aseguramiento de la Calidad Educativa** | Calidad Educativa, Cobertura, Direcciones Regionales — y externamente Superintendencia de Educación / Intendencia de Educación Parvularia | Consolidar indicadores propios de calidad pedagógica y servir de contraparte técnica ante la Superintendencia — sin ejercer fiscalización directa: esa facultad la traspasó fuera de JUNJI la Ley de Modernización de Educación Parvularia (2025) |
 | 3. **Gestión de Personas (ciclo laboral)** | Gestión y Desarrollo de Personas, Direcciones Regionales | Automatización de primer nivel en licencias médicas, bienestar y trámites repetitivos de alto volumen |
 | 4. **Comunicaciones y Respuesta Institucional** | Comunicaciones y Ciudadanía, Fiscalía, Gabinete | Extender el agente DocDigital ya construido de "leer y acusar recibo" a "clasificar, resumir y sugerir plazo/prioridad" de la cola de pendientes |
 | 5. **Gestión Territorial (Nacional ↔ Regional)** | Las 16 Direcciones Regionales y Dirección Nacional | Consolidación automática de reportes semanales/regionales (hoy manuales, como el "Reporte Departamento de Cobertura" que circula todos los lunes) en un tablero único |
 
-**Aseguramiento de Calidad Educativa**, **Cobertura e Infraestructura** y **Gestión Financiera y Presupuestaria** end-to-end quedan para una segunda ola, dado que ahí el costo de un error (currículo pedagógico, obras civiles, ejecución presupuestaria) es más alto y requiere más validación previa.
+**Cobertura e Infraestructura** y **Gestión Financiera y Presupuestaria** end-to-end quedan para una segunda ola, dado que ahí el costo de un error (obras civiles, ejecución presupuestaria) es más alto y requiere más validación previa. Aseguramiento de la Calidad Educativa entra en la primera ola porque, a diferencia de fiscalizar (función que ya no es de JUNJI), consolidar indicadores propios y ser contraparte técnica de la Superintendencia es exactamente el tipo de proceso de alto volumen y bajo riesgo de ejecución que esta fase prioriza.
 
 ---
 
@@ -179,8 +179,8 @@ Se propone un comité pequeño y con mandato claro, no una mesa amplia de picote
 |---|---|---|---|
 | 0 | Mes 1 | Formalizar el Comité de IA, aprobar política de datos y "humano en el loop" | Resolución que crea el Comité; política de uso de IA |
 | 1 | Meses 1-3 | Extender el patrón de `docdigital-mcp-proxy` al gateway central; agente de Oferta Programática y Evaluación Ex Ante | Núcleo de orquestación en producción; primer agente por proceso |
-| 2 | Meses 3-6 | Agentes de Fiscalización y Cumplimiento, Gestión de Personas, Gestión Territorial (Nacional ↔ Regional) | 3 agentes adicionales; conexión de Claude junto a ChatGPT sobre el mismo gateway |
-| 3 | Meses 6-12 | Aseguramiento de Calidad Educativa, Cobertura e Infraestructura y Gestión Financiera y Presupuestaria, con validación ética reforzada; capacitación masiva | Cobertura completa de procesos priorizados; comité operando con métricas trimestrales |
+| 2 | Meses 3-6 | Agentes de Aseguramiento de la Calidad Educativa, Gestión de Personas, Comunicaciones y Respuesta Institucional, Gestión Territorial (Nacional ↔ Regional) | 4 agentes adicionales; conexión de Claude junto a ChatGPT sobre el mismo gateway |
+| 3 | Meses 6-12 | Cobertura e Infraestructura y Gestión Financiera y Presupuestaria, con validación reforzada; capacitación masiva | Cobertura completa de procesos priorizados; comité operando con métricas trimestrales |
 
 ---
 
