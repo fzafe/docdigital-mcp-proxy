@@ -67,7 +67,9 @@ Esta política no reemplaza nada de lo ya propuesto en este documento — es el 
 
 ## 3. Arquitectura propuesta: el "cerebro-pulpo"
 
-La metáfora es correcta y tiene una traducción técnica directa: un **núcleo de orquestación** (el cerebro) y **agentes departamentales** (los tentáculos), todos hablando el mismo protocolo — **MCP (Model Context Protocol)** —, que es exactamente lo que ya usa `docdigital-mcp-proxy`. MCP es el estándar abierto que tanto Claude como, mediante Actions/Custom GPTs, ChatGPT pueden consumir, lo que permite **una sola integración por sistema y múltiples "cerebros" (LLMs) encima**, en vez de una integración distinta por cada combinación sistema × modelo.
+La metáfora es correcta y tiene una traducción técnica directa: un **núcleo de orquestación** (el cerebro) y **agentes por proceso** (los tentáculos), todos hablando el mismo protocolo — **MCP (Model Context Protocol)** —, que es exactamente lo que ya usa `docdigital-mcp-proxy`. MCP es el estándar abierto que tanto Claude como, mediante Actions/Custom GPTs, ChatGPT pueden consumir, lo que permite **una sola integración por sistema y múltiples "cerebros" (LLMs) encima**, en vez de una integración distinta por cada combinación sistema × modelo.
+
+**Decisión de diseño (julio 2026):** los agentes se organizan **desde el día uno por proceso end-to-end, no por departamento**. Un agente que solo replicara el organigrama de la REX 429 heredaría exactamente el problema que este documento diagnostica — la insularidad entre departamentos —, solo que ahora automatizada. Cada agente de abajo cruza, a propósito, más de un departamento; ver la sección 3.3 para el detalle de qué departamentos cruza cada uno.
 
 ```mermaid
 flowchart TB
@@ -81,14 +83,14 @@ flowchart TB
         GW["Gateway MCP<br/>auth · logging · políticas de acceso · auditoría"]
     end
 
-    subgraph Tentaculos["Agentes por departamento (tentáculos)"]
-        A1["Agente Planificación<br/>procesos · indicadores · datos"]
-        A2["Agente Gestión de Personas<br/>licencias · bienestar · dotación"]
-        A3["Agente Fiscalía<br/>legalidad · disciplinarios · DocDigital"]
-        A4["Agente Comunicaciones<br/>plan comunicacional · ciudadanía"]
-        A5["Agente Cobertura e Infraestructura<br/>proyectos de jardines"]
-        A6["Agente Recursos Financieros<br/>presupuesto · contabilidad"]
-        A7["Agente Direcciones Regionales<br/>reportería territorial"]
+    subgraph Tentaculos["Agentes por proceso end-to-end (tentáculos)"]
+        A1["Oferta Programática y<br/>Evaluación Ex Ante"]
+        A2["Gestión de Personas<br/>(ciclo laboral)"]
+        A3["Fiscalización y<br/>Cumplimiento"]
+        A4["Comunicaciones y<br/>Respuesta Institucional"]
+        A5["Cobertura e<br/>Infraestructura"]
+        A6["Gestión Financiera y<br/>Presupuestaria"]
+        A7["Gestión Territorial<br/>(Nacional ↔ Regional)"]
     end
 
     subgraph Sistemas["Sistemas fuente"]
@@ -106,8 +108,8 @@ flowchart TB
     A1 --> S3 & S4
     A2 --> S3 & S4
     A3 --> S1 & S4
-    A4 --> S4
-    A5 --> S3
+    A4 --> S1 & S4
+    A5 --> S3 & S4
     A6 --> S3
     A7 --> S2 & S4
 ```
@@ -132,17 +134,21 @@ flowchart TB
 
 Esto simplifica el punto 3.1 más abajo: **no hay que decidir "qué modelo atiende cada agente en producción"** — ChatGPT es la única interfaz operativa por ahora, y Claude queda del lado de construcción/mantención. Si más adelante se quiere sumar Claude como segundo cerebro operativo (tal como se describía en la versión anterior de este documento), es una extensión natural del mismo gateway, no un rediseño.
 
-### 3.3 Agentes departamentales sugeridos (fase inicial)
+### 3.3 Agentes por proceso sugeridos (fase inicial)
 
 No se propone un agente por cada una de las ~20 unidades de la orgánica el primer día. Se prioriza donde hay **alto volumen + procedimiento ya escrito**, que es donde un agente aporta valor inmediato y con menor riesgo:
 
-1. **Agente Planificación / Gestión de Procesos** — punto de entrada natural: ya es dueño metodológico del levantamiento de procesos. Primer caso de uso: responder "¿cuál es el procedimiento vigente para X?" citando el manual correcto, y detectar procedimientos desactualizados o contradictorios entre sí.
-2. **Agente Fiscalía** — apoyo en clasificación y borrador de respuestas a oficios (como los de Contraloría o parlamentarios que ya circulan por correo), siempre con control de legalidad humano antes de firma.
-3. **Agente Gestión y Desarrollo de Personas** — automatización de primer nivel en licencias médicas, bienestar y trámites repetitivos de alto volumen.
-4. **Agente DocDigital / Comunicaciones oficiales** (ya construido) — extender de "leer y acusar recibo" a "clasificar, resumir y sugerir plazo/prioridad" de la cola de pendientes.
-5. **Agente Direcciones Regionales** — consolidación automática de reportes semanales/regionales (hoy manuales, como el "Reporte Departamento de Cobertura" que circula todos los lunes por correo) en un tablero único para Dirección Nacional.
+Cada agente se define por el **proceso end-to-end** que cubre, no por el departamento que lo aloja — varios departamentos participan de cada uno:
 
-Calidad Educativa y Cobertura e Infraestructura quedan para una segunda ola, dado que ahí el costo de un error (currículo pedagógico, obras civiles) es más alto y requiere más validación previa.
+| Agente (proceso end-to-end) | Departamentos/unidades que cruza | Primer caso de uso |
+|---|---|---|
+| 1. **Oferta Programática y Evaluación Ex Ante** | Planificación (Oficina de Oferta Programática), Recursos Financieros, Calidad Educativa, Cobertura — y externamente MDSyF/DIPRES | Reconciliar automáticamente los datos de cobertura, indicadores de calidad y ejecución presupuestaria que hoy se concilian a mano para cada evaluación ex ante (ver `junji-2050-documento-maestro.md`, sección 3.5) |
+| 2. **Fiscalización y Cumplimiento** | Fiscalía, Cobertura, Calidad Educativa, Direcciones Regionales | Clasificación y borrador de respuestas a oficios (Contraloría, parlamentarios), siempre con control de legalidad humano antes de firma |
+| 3. **Gestión de Personas (ciclo laboral)** | Gestión y Desarrollo de Personas, Direcciones Regionales | Automatización de primer nivel en licencias médicas, bienestar y trámites repetitivos de alto volumen |
+| 4. **Comunicaciones y Respuesta Institucional** | Comunicaciones y Ciudadanía, Fiscalía, Gabinete | Extender el agente DocDigital ya construido de "leer y acusar recibo" a "clasificar, resumir y sugerir plazo/prioridad" de la cola de pendientes |
+| 5. **Gestión Territorial (Nacional ↔ Regional)** | Las 16 Direcciones Regionales y Dirección Nacional | Consolidación automática de reportes semanales/regionales (hoy manuales, como el "Reporte Departamento de Cobertura" que circula todos los lunes) en un tablero único |
+
+**Aseguramiento de Calidad Educativa**, **Cobertura e Infraestructura** y **Gestión Financiera y Presupuestaria** end-to-end quedan para una segunda ola, dado que ahí el costo de un error (currículo pedagógico, obras civiles, ejecución presupuestaria) es más alto y requiere más validación previa.
 
 ---
 
@@ -172,9 +178,9 @@ Se propone un comité pequeño y con mandato claro, no una mesa amplia de picote
 | Fase | Horizonte | Foco | Entregable |
 |---|---|---|---|
 | 0 | Mes 1 | Formalizar el Comité de IA, aprobar política de datos y "humano en el loop" | Resolución que crea el Comité; política de uso de IA |
-| 1 | Meses 1-3 | Extender el patrón de `docdigital-mcp-proxy` al gateway central; agente Gestión de Procesos | Núcleo de orquestación en producción; primer agente departamental |
-| 2 | Meses 3-6 | Agentes Fiscalía, Gestión de Personas, Direcciones Regionales | 3 agentes adicionales; conexión de Claude junto a ChatGPT sobre el mismo gateway |
-| 3 | Meses 6-12 | Calidad Educativa y Cobertura, con validación ética reforzada; capacitación masiva | Cobertura completa de departamentos priorizados; comité operando con métricas trimestrales |
+| 1 | Meses 1-3 | Extender el patrón de `docdigital-mcp-proxy` al gateway central; agente de Oferta Programática y Evaluación Ex Ante | Núcleo de orquestación en producción; primer agente por proceso |
+| 2 | Meses 3-6 | Agentes de Fiscalización y Cumplimiento, Gestión de Personas, Gestión Territorial (Nacional ↔ Regional) | 3 agentes adicionales; conexión de Claude junto a ChatGPT sobre el mismo gateway |
+| 3 | Meses 6-12 | Aseguramiento de Calidad Educativa, Cobertura e Infraestructura y Gestión Financiera y Presupuestaria, con validación ética reforzada; capacitación masiva | Cobertura completa de procesos priorizados; comité operando con métricas trimestrales |
 
 ---
 
