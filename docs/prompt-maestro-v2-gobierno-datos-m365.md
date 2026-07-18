@@ -522,3 +522,22 @@ Dentro del mismo programa hay además sub-familias no reportadas antes: "Informe
 **Evidencia directa de versionado manual sin control.** Se encontraron archivos literalmente nombrados `Copia de Copia de INFORMES MENSUALES JUNIO 2021 (003) (002).xls` (repetido en tres subcarpetas distintas de RR.HH.) y `Reporte Operativo semana del 12-01 al 16-01-2026 - Copia.xlsx`. Esto confirma que el personal no utiliza el historial de versiones nativo de SharePoint, sino que crea copias manuales encadenadas — generando duplicados con nombres cada vez más largos y sin forma de saber cuál copia es la vigente. Es evidencia concreta y accionable para justificar la activación de versionado nativo + retención de versiones como control de gobierno de datos (Sección 21), no solo como recomendación teórica.
 
 **"Informe Mensual de Reemplazos"** devolvió 3.057 resultados, pero con alta proporción de coincidencias difusas no relacionadas (bitácoras de soporte TI, informes de cierre de gestión de administración 2023-2026, actas de reunión) — refuerza la recomendación del Anexo A/B de no usar totales de búsqueda por relevancia como conteo exacto, y de deduplicar/filtrar por sitio y ruta antes de reportar cifras a Dirección.
+
+## Anexo D — Colaboración en Microsoft Teams (solo metadatos de chat)
+
+Se analizaron 50 chats de Teams del usuario piloto (tipo, tema, número de miembros, fecha), **sin leer contenido de mensajes**, conforme al alcance de privacidad acordado (Sección 3).
+
+**Distribución:** 60% chats 1:1 (coordinación bilateral), 34% chats de reunión, 4% grupos persistentes.
+
+**Los chats de reunión revelan los órganos institucionales recurrentes de JUNJI:**
+
+| Órgano / proceso | Evidencia |
+|---|---|
+| COSOC JUNJI (Consejo de la Sociedad Civil) | Sesión Extraordinaria N°1 y Sesión Ordinaria N°5 — solo en esta muestra de 50 chats, confirma cadencia regular |
+| Reunión DR / Directorio / Unidades Asesoras | 37 asistentes, órgano de dirección regular |
+| Gestión de riesgos / PMG | "PMG Riesgos Psicosociales" con 97 miembros — probable encuesta de clima organizacional asociada |
+| Auditoría / Contraloría | "Seguimiento CGR 748-2023 O'Higgins", "Revisión jurídica SdEP-VTF" |
+| Gremios | Reuniones AJUNJI / APROJUNJI (asociaciones de funcionarios) |
+| Continuidad operativa / emergencias | "Cogrid preventivo", "Equipo directivo evaluación emergencia" — coherente con el hallazgo de correos UNGRD de la Sección 7 |
+
+**Hallazgo de gobierno: el Gabinete es un nodo interinstitucional.** Varias reuniones (COSOC, Lineamientos de Gestión 2026) incluyen participantes externos a JUNJI: `@mineduc.cl` (Subsecretaría de Educación Parvularia), `@integra.cl` (Fundación Integra), `@slepla.gob.cl`/`@slepelqui.gob.cl` (Servicios Locales de Educación Pública), y organizaciones de sociedad civil (`@santotomas.cl`, `@hogardecristo.cl`, `@cftla.cl`, `@unitedway.cl`, `@cristojoven.cl`). **Límite de gobierno explícito:** el contenido de estos chats con terceros externos no debe alimentar un futuro RAG/GPT corporativo sin evaluar previamente la base legal y el consentimiento de esas organizaciones — son datos de coordinación interinstitucional, no activos internos de JUNJI, y se agregan a la lista de la Sección 21.
