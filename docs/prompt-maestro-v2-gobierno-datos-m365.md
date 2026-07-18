@@ -475,3 +475,27 @@ KPIs sugeridos para el Dashboard Ejecutivo (a construir en Power BI sobre el Inv
 - [ ] ¿Se validó formalmente con cada Data Owner la clasificación de sensibilidad propuesta? Pendiente — requiere las sesiones del roadmap días 31–60.
 - [ ] ¿Se habilitó el acceso a Power BI REST API / Purview / Fabric para completar el linaje? Pendiente — requiere decisión y registro de aplicación adicional (Supuesto S4).
 - [ ] ¿Se obtuvo patrocinio ejecutivo formal para escalar de Escenario B a Escenario C? Pendiente — a gestionar con el Informe Ejecutivo resultante de este documento.
+
+---
+
+## Anexo A — Análisis complementario de metadatos (corpus "dashboard")
+
+Profundizando el descubrimiento de la Sección 11 (Estrategia Power BI), se amplió la muestra de los ~380 activos relacionados con "dashboard" en SharePoint (de 10 a ~140 registros, solo metadatos). Hallazgos:
+
+**A.1 Corrección metodológica — ruido en la búsqueda por texto libre.** La mayoría de los resultados desde el registro ~30 en adelante corresponden a **código fuente de un portal web institucional descontinuado (2007-2016)** en `Depto_Informatica/UNIDAD_PROYECTOS/WEB` y `SISTRANS` (archivos `dashboard.css`, `profilerviewer.js`, plantillas Joomla), donde "dashboard" aparece como nombre de clase CSS o variable de código, sin relación con reportes de negocio. **Ajuste al diseño de la Fase 2:** el motor de descubrimiento debe combinar palabra clave + `fileType` (aspx, pbix) + lista de sitios corporativos conocidos, no depender de texto libre puro, o el ruido puede superar el 60% de los resultados.
+
+**A.2 El "hub" real de Power BI se concentra en 3 sitios, 26 páginas.**
+
+| Sitio | Páginas de dashboard reales | Contenido |
+|---|---|---|
+| `Datos_y_Estadisticas` | 17 | Matrícula, asistencia, accidentes, nutrición, postulaciones SIM, calidad de datos |
+| `dnvtf` | 6 | Ejecución presupuestaria, presupuesto histórico, equipo regional |
+| `PlandeGestinRegionalOHiggins` | 3 (casi duplicadas entre sí) | Misma página de reporte regional publicada 3 veces con nombres ligeramente distintos |
+
+Estos 3 sitios son el objetivo prioritario para la integración con Power BI REST API cuando se habilite el scope correspondiente (Sección 11, Supuesto S4).
+
+**A.3 Ya existe un embrión de diccionario de datos.** `dnvtf/.../DICCIONARIO_DE_DATOS/EJECUCION_PRESUPUESTARIA/manual_usuario_proyecciones_presupuestarias.docx` — JUNJI ya documentó el proceso de proyecciones presupuestarias. El Diccionario de Metadatos (Sección 15) debe partir de este insumo existente, no reconstruirlo desde cero.
+
+**A.4 Nueva familia de reporte periódico de bajo esfuerzo de consolidación.** Sitio dedicado `ReporteOperativoUE`, con un archivo Excel semanal ("Reporte Operativo semana del DD-MM al DD-MM-2026"), activo y corriente hasta julio 2026, con glosario propio y nomenclatura consistente. Mejor candidato que el de ejecución presupuestaria para un primer piloto de consolidación en dataset único, por tener ya nomenclatura estandarizada.
+
+**A.5 Hallazgo de gobierno adicional a escalar.** Un archivo nombrado `Funciones Secreto.xlsx` (sitio `GestiondeProcesos`) con columnas RUT, nombres y cargo amerita revisión directa del Data Owner por su nombre inusual. Se identificó además una carpeta de proyecto de remuneraciones/payroll dentro de TI (`Depto_Informatica/.../proyecto_remuneraciones`), otra área sensible fuera del alcance tradicional de RR.HH. que debe incorporarse a la lista de activos restringidos (Sección 21).
