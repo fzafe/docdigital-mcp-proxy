@@ -499,3 +499,18 @@ Estos 3 sitios son el objetivo prioritario para la integración con Power BI RES
 **A.4 Nueva familia de reporte periódico de bajo esfuerzo de consolidación.** Sitio dedicado `ReporteOperativoUE`, con un archivo Excel semanal ("Reporte Operativo semana del DD-MM al DD-MM-2026"), activo y corriente hasta julio 2026, con glosario propio y nomenclatura consistente. Mejor candidato que el de ejecución presupuestaria para un primer piloto de consolidación en dataset único, por tener ya nomenclatura estandarizada.
 
 **A.5 Hallazgo de gobierno adicional a escalar.** Un archivo nombrado `Funciones Secreto.xlsx` (sitio `GestiondeProcesos`) con columnas RUT, nombres y cargo amerita revisión directa del Data Owner por su nombre inusual. Se identificó además una carpeta de proyecto de remuneraciones/payroll dentro de TI (`Depto_Informatica/.../proyecto_remuneraciones`), otra área sensible fuera del alcance tradicional de RR.HH. que debe incorporarse a la lista de activos restringidos (Sección 21).
+
+## Anexo B — Cuantificación de duplicación: programa Plan Nacional de la Lectura (PNL)
+
+Se profundizó la familia de plantilla "Informe Gestión PNL" (identificada en la Sección 8 como la de mayor concentración, 37% de la muestra de "informe"). Una búsqueda específica ("Informe Gestión PNL", todo tipo de archivo) devuelve **2.000 resultados** — un solo programa podría explicar la mayor parte del volumen total de "informes" detectado en el sitio `SECCIONGESTIONCURRICULAR`.
+
+**Evidencia de duplicación de árbol de carpetas completo, no solo por región.** El mismo archivo (idéntico nombre y fecha de modificación) aparece dos veces bajo dos rutas padre distintas del mismo sitio:
+
+- `.../PROCESOS PRESUPUESTARIOS/PLAN NACIONAL DE LA LECTURA/.../EJECUCION PRESUPUESTARIA/2019/INFORME GESTIÓN 2019/...`
+- `.../PLAN NACIONAL DE LA LECTURA/PLAN NACIONAL DE LA LECTURA 2023/CARPETA COMPARTIDA MEDIADORAS/EJECUCION PRESUPUESTARIA/2019/...`
+
+Este patrón se repite consistentemente en los ~15 informes regionales de 2019 y ~9 de 2018 (numeración romana de región, convención de nombres más antigua). **Conclusión: la carpeta histórica "2019" completa fue copiada dentro de una carpeta de trabajo "2023" nueva**, duplicando el volumen de almacenamiento y generando dos copias "vigentes" de la misma información histórica — no son activos adicionales, son los mismos activos con el doble de copias.
+
+Dentro del mismo programa hay además sub-familias no reportadas antes: "Informe Jornada PNL [región] [año]" (asistencia a jornadas, 2016-2019), borradores iterativos ("informe pnl 2019 ultimo", "...ultimo 2"), y pares docx/pdf del mismo contenido.
+
+**Nota metodológica para el motor de descubrimiento (Fases 2 y 13).** El índice de búsqueda de SharePoint se reordena entre llamadas equivalentes — el mismo archivo aparece en ventanas de paginación distintas y el `totalResultCount` varía levemente entre consultas similares realizadas segundos después. El descubrimiento automático de producción debe deduplicar por `driveId`+`itemId`, no confiar en offsets estables de paginación.
