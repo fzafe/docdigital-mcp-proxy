@@ -2,6 +2,11 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { ProxyAgent, setGlobalDispatcher } from "undici";
+
+if (process.env.FIXIE_URL) {
+  setGlobalDispatcher(new ProxyAgent(process.env.FIXIE_URL));
+}
 
 const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.DOCDIGITAL_BASE_URL || "https://api-demodoc.digital.gob.cl/api";
@@ -88,9 +93,17 @@ function buildServer() {
 
   server.tool(
     "docdigital_listar_recibidos",
-    "Lista las comunicaciones oficiales recibidas por la entidad autenticada en DocDigital, sin filtrar ni ordenar.",
-    {},
-    async () => toolResult(await apiRequest("GET", "/documentos/recibidos"))
+    "Lista las comunicaciones oficiales recibidas por la entidad autenticada en DocDigital. IMPORTANTE: DocDigital exige el parametro notificado en produccion — llamar este endpoint sin filtro devuelve el historico completo y la peticion cae por timeout (HTTP 504), confirmado por soporte de DocDigital.",
+    {
+      notificado: z
+        .boolean()
+        .optional()
+        .describe(
+          "false = documentos pendientes de acuse de recibo (por defecto). true = documentos que ya tienen acuse de recibo. Siempre se envia uno de los dos para evitar timeout."
+        ),
+    },
+    async ({ notificado }) =>
+      toolResult(await apiRequest("GET", "/documentos/recibidos", { query: { notificado: notificado ?? false } }))
   );
 
   server.tool(
@@ -100,7 +113,7 @@ function buildServer() {
       limite: z.number().int().min(1).max(50).optional().describe("Cantidad maxima de comunicaciones a retornar (por defecto 5)"),
     },
     async ({ limite }) => {
-      const data = await apiRequest("GET", "/documentos/recibidos");
+      const data = await apiRequest("GET", "/documentos/recibidos", { query: { notificado: false } });
       const items = Array.isArray(data?.result) ? data.result : [];
       const pendientes = items.filter((item) =>
         item?.destinatarios?.con_copia?.entidades?.some((e) => e.estado === "Pendiente acuse")
