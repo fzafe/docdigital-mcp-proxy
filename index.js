@@ -2,7 +2,6 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
-import { ProxyAgent, setGlobalDispatcher } from "undici";
 import crypto from "node:crypto";
 import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
@@ -10,10 +9,6 @@ import * as XLSX from "xlsx";
 import AdmZip from "adm-zip";
 import MsgReaderPkg from "@kenjiuno/msgreader";
 const MsgReader = MsgReaderPkg.default ?? MsgReaderPkg;
-
-if (process.env.FIXIE_URL) {
-  setGlobalDispatcher(new ProxyAgent(process.env.FIXIE_URL));
-}
 
 const PORT = process.env.PORT || 3000;
 const BASE_URL = process.env.DOCDIGITAL_BASE_URL || "https://api-demodoc.digital.gob.cl/api";
