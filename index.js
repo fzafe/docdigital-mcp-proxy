@@ -263,6 +263,7 @@ async function procesarItemInventario(item, { comunicacionId, extraerZip, extrae
     texto_extraido: null,
     texto_truncado: false,
     extraccion_texto: "no_aplica",
+    paginas_totales: null,
     archivo_padre: item.archivo_padre || null,
   };
 
@@ -394,6 +395,7 @@ async function procesarItemInventario(item, { comunicacionId, extraerZip, extrae
     resultado.texto_extraido = extraccion.texto || null;
     resultado.texto_truncado = extraccion.truncado;
     resultado.extraccion_texto = extraccion.extraccion_texto;
+    resultado.paginas_totales = extraccion.paginas_totales ?? null;
     if (extraccion.motivo) resultado.motivo_falla = extraccion.motivo;
   }
 
