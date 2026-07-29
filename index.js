@@ -79,6 +79,30 @@ function toolResult(data) {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
 }
 
+// El endpoint /documentos/buscar de DocDigital devuelve textos con tildes mal codificados
+// (ej. "ValdÃ©s" en vez de "Valdés"): son bytes UTF-8 leidos como Latin-1 por su backend.
+// Se revierte reinterpretando la cadena como Latin-1 y decodificandola de vuelta a UTF-8.
+function fixMojibake(value) {
+  if (typeof value === "string") {
+    if (/Ã.|â€/.test(value)) {
+      try {
+        const fixed = Buffer.from(value, "latin1").toString("utf8");
+        if (!fixed.includes("�")) return fixed;
+      } catch {
+        // deja el valor original si la conversion falla
+      }
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(fixMojibake);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = fixMojibake(v);
+    return out;
+  }
+  return value;
+}
+
 // Fechas de DocDigital vienen como "DD-MM-YYYY HH:MM:SS"
 function parseFechaDocDigital(str) {
   if (!str) return null;
@@ -157,25 +181,25 @@ function buildServer() {
       pageNumber: z.number().int().min(0).optional().describe("Numero de pagina, base 0 (por defecto 0)"),
       orderType: z.enum(["ASC", "DESC"]).optional(),
     },
-    async ({ estadoTramitacion, tipoTramitacion, pageSize, pageNumber, orderType }) =>
-      toolResult(
-        await apiRequest("GET", "/documentos/buscar", {
-          query: {
-            estadoTramitacion,
-            tipoTramitacion,
-            pageSize: pageSize ?? 100,
-            pageNumber: pageNumber ?? 0,
-            orderType: orderType ?? "ASC",
-          },
-        })
-      )
+    async ({ estadoTramitacion, tipoTramitacion, pageSize, pageNumber, orderType }) => {
+      const data = await apiRequest("GET", "/documentos/buscar", {
+        query: {
+          estadoTramitacion,
+          tipoTramitacion,
+          pageSize: pageSize ?? 100,
+          pageNumber: pageNumber ?? 0,
+          orderType: orderType ?? "ASC",
+        },
+      });
+      return toolResult(fixMojibake(data));
+    }
   );
 
   server.tool(
     "docdigital_mis_pendientes_visar",
     "Obtiene los documentos con estado 'Pendiente de visacion' en DocDigital donde Felipe Ignacio Zafe Contreras (Jefe de Gabinete, Junta Nacional de Jardines Infantiles) figura como visador. Recorre las paginas del endpoint de busqueda de DocDigital y filtra por nombre de visador, porque el filtro nativo de la API por visador (runVisador/nombreVisador) esta deprecado y no es confiable. LIMITACION CONOCIDA: no se puede distinguir de forma confiable si el documento esta pendiente especificamente en la etapa de Felipe o en otra etapa de la cadena de visacion; puede incluir documentos donde Felipe ya visto o donde el turno actual es de otra persona.",
     {
-      limite: z.number().int().min(1).max(100).optional().describe("Cantidad maxima de documentos a retornar, ordenados del mas antiguo al mas reciente (por defecto 20)"),
+      limite: z.number().int().min(1).max(200).optional().describe("Cantidad maxima de documentos a retornar, ordenados del mas antiguo al mas reciente (por defecto 200, para traer el total completo)"),
     },
     async ({ limite }) => {
       const NOMBRE_VISADOR = "felipe ignacio zafe contreras";
@@ -209,7 +233,7 @@ function buildServer() {
           parseFechaDocDigital(a?.documento_principal?.fechaCreacion) -
           parseFechaDocDigital(b?.documento_principal?.fechaCreacion)
       );
-      return toolResult(encontrados.slice(0, limite || 20));
+      return toolResult(fixMojibake(encontrados.slice(0, limite || 200)));
     }
   );
 
