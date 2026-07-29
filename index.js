@@ -529,8 +529,9 @@ function buildServer() {
     { id: z.union([z.string(), z.number()]).describe("Identificador de la comunicacion") },
     async ({ id }) => {
       const raw = await apiRequest("GET", `/documentos/${id}`);
-      const principal = raw?.documento_principal;
-      const anexos = Array.isArray(raw?.documentos_anexos) ? raw.documentos_anexos : [];
+      const doc = raw?.result || raw;
+      const principal = doc?.documento_principal;
+      const anexos = Array.isArray(doc?.documentos_anexos) ? doc.documentos_anexos : [];
       const archivos_disponibles = [
         ...(principal
           ? [
@@ -549,7 +550,7 @@ function buildServer() {
           orden: a.correlativo ?? i + 1,
         })),
       ];
-      const estado = raw?.estado_tramitacion || null;
+      const estado = doc?.estado_tramitacion || null;
       const resumen = {
         tema_literal_docdigital: principal?.materia || null,
         id_documento: principal?.documento_id ?? id,
@@ -557,10 +558,10 @@ function buildServer() {
         fecha_creacion: principal?.fechaCreacion || null,
         estado,
         tipo_acto: principal?.tipo || null,
-        remitente: raw?.info_creador || null,
-        destinatarios: raw?.destinatarios || null,
-        firmantes: raw?.info_firmas?.firmantes || null,
-        visadores: raw?.info_visaciones?.visadores || null,
+        remitente: doc?.info_creador || null,
+        destinatarios: doc?.destinatarios || null,
+        firmantes: doc?.info_firmas?.firmantes || null,
+        visadores: doc?.info_visaciones?.visadores || null,
         etapa_actual:
           estado === "PENDIENTE_VISACION"
             ? "Pendiente de visacion (DocDigital no expone de forma confiable en que etapa especifica de la cadena de visadores se encuentra)"
@@ -582,7 +583,8 @@ function buildServer() {
       extraer_msg: z.boolean().optional().describe("Extraer asunto/remitente/cuerpo/adjuntos de anexos .msg (por defecto true)"),
     },
     async ({ id, incluir_principal, incluir_anexos, extraer_zip, extraer_msg }) => {
-      const detalle = await apiRequest("GET", `/documentos/${id}`);
+      const detalleRaw = await apiRequest("GET", `/documentos/${id}`);
+      const detalle = detalleRaw?.result || detalleRaw;
       const principal = detalle?.documento_principal;
       const anexosRaw = Array.isArray(detalle?.documentos_anexos) ? detalle.documentos_anexos : [];
 
