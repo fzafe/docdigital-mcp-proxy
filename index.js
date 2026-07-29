@@ -128,6 +128,92 @@ function buildServer() {
   );
 
   server.tool(
+    "docdigital_buscar_documentos",
+    "Busca documentos de DocDigital usando el endpoint /documentos/buscar con filtros flexibles. Por defecto se acota a la entidad del token (JUNJI). Usar siempre con estadoTramitacion o algun otro filtro: sin filtros retorna el historico completo y la peticion cae por timeout.",
+    {
+      estadoTramitacion: z
+        .enum([
+          "BORRADOR",
+          "PENDIENTE_VISACION",
+          "PENDIENTE_FIRMA",
+          "OPS_PENDIENTE_DESPACHO",
+          "OPS_RESUELTO_ENVIADO",
+          "OPS_RECHAZADO",
+          "RECHAZADO_VISACION",
+          "RECHAZADO_FIRMA",
+          "OPE_RECIBIDO_PARCIALMENTE",
+          "OPE_DEVUELTO_PARCIALMENTE",
+          "OPE_RECIBIDO_PARCIALMENTE_CON_DEVOLUCION",
+          "OPE_RECEPCION_TOTAL",
+          "OPE_DEVOLUCION_TOTAL",
+          "OPE_RECEPCION_TOTAL_CON_DEVOLUCION",
+          "DOCUMENTO_FIRMADO",
+          "CANCELADO_ADMINISTRADOR",
+        ])
+        .optional()
+        .describe("Estado de la tramitacion del documento"),
+      tipoTramitacion: z.enum(["COMUNICACION_OFICIAL", "COMUNICACION_INTERNA", "GENERACION_DOCUMENTO_FEA"]).optional(),
+      pageSize: z.number().int().min(1).max(200).optional().describe("Tamano de pagina (por defecto 100, para evitar timeout)"),
+      pageNumber: z.number().int().min(0).optional().describe("Numero de pagina, base 0 (por defecto 0)"),
+      orderType: z.enum(["ASC", "DESC"]).optional(),
+    },
+    async ({ estadoTramitacion, tipoTramitacion, pageSize, pageNumber, orderType }) =>
+      toolResult(
+        await apiRequest("GET", "/documentos/buscar", {
+          query: {
+            estadoTramitacion,
+            tipoTramitacion,
+            pageSize: pageSize ?? 100,
+            pageNumber: pageNumber ?? 0,
+            orderType: orderType ?? "ASC",
+          },
+        })
+      )
+  );
+
+  server.tool(
+    "docdigital_mis_pendientes_visar",
+    "Obtiene los documentos con estado 'Pendiente de visacion' en DocDigital donde Felipe Ignacio Zafe Contreras (Jefe de Gabinete, Junta Nacional de Jardines Infantiles) figura como visador. Recorre las paginas del endpoint de busqueda de DocDigital y filtra por nombre de visador, porque el filtro nativo de la API por visador (runVisador/nombreVisador) esta deprecado y no es confiable. LIMITACION CONOCIDA: no se puede distinguir de forma confiable si el documento esta pendiente especificamente en la etapa de Felipe o en otra etapa de la cadena de visacion; puede incluir documentos donde Felipe ya visto o donde el turno actual es de otra persona.",
+    {
+      limite: z.number().int().min(1).max(100).optional().describe("Cantidad maxima de documentos a retornar, ordenados del mas antiguo al mas reciente (por defecto 20)"),
+    },
+    async ({ limite }) => {
+      const NOMBRE_VISADOR = "felipe ignacio zafe contreras";
+      const PAGE_SIZE = 200;
+      const MAX_PAGINAS = 20;
+      let pageNumber = 0;
+      let totalPages = 1;
+      const encontrados = [];
+      do {
+        const data = await apiRequest("GET", "/documentos/buscar", {
+          query: { estadoTramitacion: "PENDIENTE_VISACION", pageSize: PAGE_SIZE, pageNumber, orderType: "ASC" },
+        });
+        const items = Array.isArray(data?.result) ? data.result : [];
+        totalPages = data?.total_pages || 1;
+        for (const item of items) {
+          const etapas = item?.info_visaciones?.visadores;
+          const esVisador =
+            Array.isArray(etapas) &&
+            etapas.some(
+              (etapa) =>
+                Array.isArray(etapa) &&
+                etapa.some((v) => (v?.usuario_nombre || "").trim().toLowerCase() === NOMBRE_VISADOR)
+            );
+          if (esVisador) encontrados.push(item);
+        }
+        pageNumber++;
+      } while (pageNumber < totalPages && pageNumber < MAX_PAGINAS);
+
+      encontrados.sort(
+        (a, b) =>
+          parseFechaDocDigital(a?.documento_principal?.fechaCreacion) -
+          parseFechaDocDigital(b?.documento_principal?.fechaCreacion)
+      );
+      return toolResult(encontrados.slice(0, limite || 20));
+    }
+  );
+
+  server.tool(
     "docdigital_detalle_comunicacion",
     "Obtiene el detalle de una comunicacion de DocDigital por su identificador: destinatarios, firmantes, visadores, documento principal y anexos.",
     { id: z.union([z.string(), z.number()]).describe("Identificador de la comunicacion") },
