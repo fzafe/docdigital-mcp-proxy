@@ -173,9 +173,12 @@ async function extraerTexto(buffer, ext) {
       try {
         const data = await parser.getText();
         const texto = (data.text || "").trim();
+        // pdf-parse inserta separadores "-- N of M --" por pagina; se excluyen del calculo
+        // de densidad de texto para no confundir paginas escaneadas (sin texto real) con texto util.
+        const textoSinMarcadores = texto.replace(/--\s*\d+\s*of\s*\d+\s*--/g, " ").replace(/\s+/g, " ").trim();
         const totalPaginas = data.total ?? data.pages?.length ?? null;
-        const promedioPorPagina = totalPaginas ? texto.length / totalPaginas : texto.length;
-        if (texto.length === 0 || promedioPorPagina < 15) {
+        const promedioPorPagina = totalPaginas ? textoSinMarcadores.length / totalPaginas : textoSinMarcadores.length;
+        if (textoSinMarcadores.length === 0 || promedioPorPagina < 20) {
           return { extraccion_texto: "requiere_ocr", ...truncarTexto(texto), paginas_totales: totalPaginas };
         }
         return { extraccion_texto: "ok", ...truncarTexto(texto), paginas_totales: totalPaginas };
