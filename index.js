@@ -3,6 +3,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import { ProxyAgent, setGlobalDispatcher } from "undici";
+import crypto from "node:crypto";
+import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
+import * as XLSX from "xlsx";
+import AdmZip from "adm-zip";
+import MsgReaderPkg from "@kenjiuno/msgreader";
+const MsgReader = MsgReaderPkg.default ?? MsgReaderPkg;
 
 if (process.env.FIXIE_URL) {
   setGlobalDispatcher(new ProxyAgent(process.env.FIXIE_URL));
@@ -110,6 +117,285 @@ function parseFechaDocDigital(str) {
   const [d, m, y] = datePart.split("-").map(Number);
   const [hh = 0, mm = 0, ss = 0] = (timePart || "").split(":").map(Number);
   return new Date(y, m - 1, d, hh, mm, ss);
+}
+
+// ---------------------------------------------------------------------------
+// Extraccion de archivos: texto, ZIP y .msg (soporte para docdigital_descargar_todos_archivos)
+// ---------------------------------------------------------------------------
+
+const MIME_POR_EXTENSION = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  csv: "text/csv",
+  txt: "text/plain",
+  zip: "application/zip",
+  msg: "application/vnd.ms-outlook",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+};
+
+const TEXTO_MAX_CHARS = 50_000;
+const EMBED_MAX_BYTES_POR_ARCHIVO = 15 * 1024 * 1024;
+const EMBED_MAX_BYTES_TOTAL = 40 * 1024 * 1024;
+const MAX_ITEMS_INVENTARIO = 40;
+const SHAREPOINT_HOSTS = /sharepoint\.com$|1drv\.ms$|-my\.sharepoint\.com$/i;
+
+function extensionDe(nombreArchivo) {
+  if (!nombreArchivo) return "";
+  const m = /\.([a-z0-9]+)$/i.exec(nombreArchivo.trim());
+  return m ? m[1].toLowerCase() : "";
+}
+
+function mimeDe(ext) {
+  return MIME_POR_EXTENSION[ext] || "application/octet-stream";
+}
+
+function sha256(buffer) {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function truncarTexto(texto) {
+  if (!texto) return { texto: texto || "", truncado: false, longitud_total: texto ? texto.length : 0 };
+  if (texto.length <= TEXTO_MAX_CHARS) return { texto, truncado: false, longitud_total: texto.length };
+  return { texto: texto.slice(0, TEXTO_MAX_CHARS), truncado: true, longitud_total: texto.length };
+}
+
+// Intenta extraer texto de un buffer segun su extension. No lanza: siempre devuelve un resultado clasificado.
+async function extraerTexto(buffer, ext) {
+  try {
+    if (ext === "pdf") {
+      const parser = new PDFParse({ data: buffer });
+      try {
+        const data = await parser.getText();
+        const texto = (data.text || "").trim();
+        const totalPaginas = data.total ?? data.pages?.length ?? null;
+        const promedioPorPagina = totalPaginas ? texto.length / totalPaginas : texto.length;
+        if (texto.length === 0 || promedioPorPagina < 15) {
+          return { extraccion_texto: "requiere_ocr", ...truncarTexto(texto), paginas_totales: totalPaginas };
+        }
+        return { extraccion_texto: "ok", ...truncarTexto(texto), paginas_totales: totalPaginas };
+      } finally {
+        await parser.destroy();
+      }
+    }
+    if (ext === "docx") {
+      const { value } = await mammoth.extractRawText({ buffer });
+      return { extraccion_texto: "ok", ...truncarTexto((value || "").trim()) };
+    }
+    if (ext === "doc") {
+      return { extraccion_texto: "fallo", texto: "", truncado: false, longitud_total: 0, motivo: "Formato .doc legado no soportado; se requiere .docx." };
+    }
+    if (ext === "xlsx" || ext === "xls" || ext === "csv") {
+      const wb = XLSX.read(buffer, { type: "buffer" });
+      const partes = wb.SheetNames.map((nombre) => {
+        const csv = XLSX.utils.sheet_to_csv(wb.Sheets[nombre]);
+        return `--- Hoja: ${nombre} ---\n${csv}`;
+      });
+      return { extraccion_texto: "ok", ...truncarTexto(partes.join("\n\n")) };
+    }
+    if (ext === "txt") {
+      return { extraccion_texto: "ok", ...truncarTexto(buffer.toString("utf8")) };
+    }
+    return { extraccion_texto: "no_aplica", texto: "", truncado: false, longitud_total: 0 };
+  } catch (err) {
+    return { extraccion_texto: "fallo", texto: "", truncado: false, longitud_total: 0, motivo: err.message };
+  }
+}
+
+function esSharePoint(url) {
+  try {
+    return SHAREPOINT_HOSTS.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+// Descarga un enlace externo (ANEXO_URL) con timeout corto. No lanza: clasifica el resultado.
+async function intentarDescargarExterno(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(url, { signal: controller.signal, redirect: "follow" });
+    const contentType = res.headers.get("content-type") || "";
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, incidencia: "no_autorizado" };
+    }
+    if (!res.ok) {
+      return { ok: false, incidencia: res.status === 404 ? "link_expirado" : "otro" };
+    }
+    if (contentType.includes("text/html")) {
+      // Muy probablemente una pantalla de login o una pagina web, no un archivo descargable
+      return { ok: false, incidencia: "requiere_login" };
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return { ok: true, buffer: Buffer.from(arrayBuffer), contentType };
+  } catch (err) {
+    return { ok: false, incidencia: err.name === "AbortError" ? "otro" : "otro", detalle: err.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Procesa un item de inventario: lo descarga (via DocDigital o enlace externo), extrae texto,
+// y si corresponde expande su contenido (ZIP, .msg). Devuelve el item resuelto y, si aplica,
+// items hijos generados por la expansion.
+async function procesarItemInventario(item, { comunicacionId, extraerZip, extraerMsg, contadorEmbed }) {
+  const resultado = {
+    archivo_id: item.archivo_id,
+    nombre_original: item.nombre_original,
+    tipo: item.tipo,
+    extension: item.extension,
+    mime_type: item.mime_type,
+    orden: item.orden ?? null,
+    tamano: null,
+    descargado: false,
+    motivo_falla: null,
+    url_origen: item.url_origen || null,
+    hash: null,
+    texto_extraido: null,
+    texto_truncado: false,
+    extraccion_texto: "no_aplica",
+    archivo_padre: item.archivo_padre || null,
+  };
+
+  let buffer = null;
+
+  if (item.esExterno) {
+    const descarga = await intentarDescargarExterno(item.url_origen);
+    if (!descarga.ok) {
+      resultado.motivo_falla = descarga.incidencia;
+      return { item: resultado, hijos: [] };
+    }
+    buffer = descarga.buffer;
+  } else {
+    try {
+      const data = await apiRequest("GET", `/documentos/${comunicacionId}/archivo`, { query: { archivo_id: item.archivo_id } });
+      const base64 = typeof data === "string" ? data : data?.result;
+      if (!base64) throw new Error("Respuesta de DocDigital sin contenido (campo result vacio).");
+      buffer = Buffer.from(base64, "base64");
+    } catch (err) {
+      resultado.motivo_falla = err.message;
+      return { item: resultado, hijos: [] };
+    }
+  }
+
+  resultado.descargado = true;
+  resultado.tamano = buffer.length;
+  resultado.hash = sha256(buffer);
+
+  const hijos = [];
+
+  if (item.extension === "zip" && extraerZip) {
+    try {
+      const zip = new AdmZip(buffer);
+      const entradas = zip.getEntries().filter((e) => !e.isDirectory);
+      for (const entrada of entradas) {
+        if (hijos.length >= MAX_ITEMS_INVENTARIO) break;
+        const extInterna = extensionDe(entrada.entryName);
+        const bufferInterno = entrada.getData();
+        const extraccion = await extraerTexto(bufferInterno, extInterna);
+        hijos.push({
+          archivo_id: `${item.archivo_id}::${entrada.entryName}`,
+          nombre_original: entrada.entryName,
+          tipo: "extraido_zip",
+          extension: extInterna,
+          mime_type: mimeDe(extInterna),
+          orden: null,
+          tamano: bufferInterno.length,
+          descargado: true,
+          motivo_falla: null,
+          url_origen: null,
+          hash: sha256(bufferInterno),
+          texto_extraido: extraccion.texto || null,
+          texto_truncado: extraccion.truncado,
+          extraccion_texto: extraccion.extraccion_texto,
+          archivo_padre: item.archivo_id,
+          _buffer: bufferInterno,
+        });
+      }
+    } catch (err) {
+      resultado.motivo_falla = `ZIP no se pudo leer: ${err.message}`;
+    }
+  } else if (item.extension === "msg" && extraerMsg) {
+    try {
+      const reader = new MsgReader(buffer);
+      const msgData = reader.getFileData();
+      const encabezado = [
+        `Asunto: ${msgData.subject || ""}`,
+        `De: ${msgData.senderName || ""} ${msgData.senderEmail || ""}`.trim(),
+        `Para: ${(msgData.recipients || []).map((r) => r.name || r.email).join(", ")}`,
+        `Fecha: ${msgData.creationTime || msgData.clientSubmitTime || ""}`,
+        "",
+        msgData.body || "",
+      ].join("\n");
+      const extraccion = truncarTexto(encabezado.trim());
+      resultado.texto_extraido = extraccion.texto;
+      resultado.texto_truncado = extraccion.truncado;
+      resultado.extraccion_texto = "ok";
+
+      for (const att of msgData.attachments || []) {
+        if (hijos.length >= MAX_ITEMS_INVENTARIO) break;
+        try {
+          const adjunto = reader.getAttachment(att);
+          const bufferAdjunto = Buffer.from(adjunto.content);
+          const extAdjunto = extensionDe(adjunto.fileName);
+          const extraccionAdjunto = await extraerTexto(bufferAdjunto, extAdjunto);
+          hijos.push({
+            archivo_id: `${item.archivo_id}::${adjunto.fileName}`,
+            nombre_original: adjunto.fileName,
+            tipo: "adjunto_msg",
+            extension: extAdjunto,
+            mime_type: mimeDe(extAdjunto),
+            orden: null,
+            tamano: bufferAdjunto.length,
+            descargado: true,
+            motivo_falla: null,
+            url_origen: null,
+            hash: sha256(bufferAdjunto),
+            texto_extraido: extraccionAdjunto.texto || null,
+            texto_truncado: extraccionAdjunto.truncado,
+            extraccion_texto: extraccionAdjunto.extraccion_texto,
+            archivo_padre: item.archivo_id,
+            _buffer: bufferAdjunto,
+          });
+        } catch (err) {
+          hijos.push({
+            archivo_id: `${item.archivo_id}::adjunto_no_leido`,
+            nombre_original: att.fileName || "adjunto_msg_desconocido",
+            tipo: "adjunto_msg",
+            extension: extensionDe(att.fileName),
+            mime_type: mimeDe(extensionDe(att.fileName)),
+            orden: null,
+            tamano: null,
+            descargado: false,
+            motivo_falla: err.message,
+            url_origen: null,
+            hash: null,
+            texto_extraido: null,
+            texto_truncado: false,
+            extraccion_texto: "fallo",
+            archivo_padre: item.archivo_id,
+          });
+        }
+      }
+    } catch (err) {
+      resultado.motivo_falla = `.msg no se pudo leer: ${err.message}`;
+    }
+  } else {
+    const extraccion = await extraerTexto(buffer, item.extension);
+    resultado.texto_extraido = extraccion.texto || null;
+    resultado.texto_truncado = extraccion.truncado;
+    resultado.extraccion_texto = extraccion.extraccion_texto;
+    if (extraccion.motivo) resultado.motivo_falla = extraccion.motivo;
+  }
+
+  resultado._buffer = buffer;
+  return { item: resultado, hijos };
 }
 
 function buildServer() {
@@ -239,9 +525,170 @@ function buildServer() {
 
   server.tool(
     "docdigital_detalle_comunicacion",
-    "Obtiene el detalle de una comunicacion de DocDigital por su identificador: destinatarios, firmantes, visadores, documento principal y anexos.",
+    "Obtiene el detalle de una comunicacion de DocDigital por su identificador: destinatarios, firmantes, visadores, documento principal y anexos. Incluye ademas un resumen con campos explicitos (tema_literal_docdigital, tipo_acto, etapa_actual, archivos_disponibles, etc.) pensados para que el agente no tenga que inferirlos del JSON crudo.",
     { id: z.union([z.string(), z.number()]).describe("Identificador de la comunicacion") },
-    async ({ id }) => toolResult(await apiRequest("GET", `/documentos/${id}`))
+    async ({ id }) => {
+      const raw = await apiRequest("GET", `/documentos/${id}`);
+      const principal = raw?.documento_principal;
+      const anexos = Array.isArray(raw?.documentos_anexos) ? raw.documentos_anexos : [];
+      const archivos_disponibles = [
+        ...(principal
+          ? [
+              {
+                archivo_id: principal.id,
+                nombre_archivo: principal.nombre_archivo,
+                tipo: "principal",
+                orden: 0,
+              },
+            ]
+          : []),
+        ...anexos.map((a, i) => ({
+          archivo_id: a.anexo_id || a.id,
+          nombre_archivo: a.nombre_archivo,
+          tipo: a.tipo === "ANEXO_URL" ? "anexo_url" : "anexo",
+          orden: a.correlativo ?? i + 1,
+        })),
+      ];
+      const estado = raw?.estado_tramitacion || null;
+      const resumen = {
+        tema_literal_docdigital: principal?.materia || null,
+        id_documento: principal?.documento_id ?? id,
+        id_comunicacion: id,
+        fecha_creacion: principal?.fechaCreacion || null,
+        estado,
+        tipo_acto: principal?.tipo || null,
+        remitente: raw?.info_creador || null,
+        destinatarios: raw?.destinatarios || null,
+        firmantes: raw?.info_firmas?.firmantes || null,
+        visadores: raw?.info_visaciones?.visadores || null,
+        etapa_actual:
+          estado === "PENDIENTE_VISACION"
+            ? "Pendiente de visacion (DocDigital no expone de forma confiable en que etapa especifica de la cadena de visadores se encuentra)"
+            : estado,
+        archivos_disponibles,
+      };
+      return toolResult({ ...raw, resumen });
+    }
+  );
+
+  server.tool(
+    "docdigital_descargar_todos_archivos",
+    "Descarga el documento principal y todos los anexos de una comunicacion de DocDigital de una sola vez, con inventario completo y trazabilidad. A diferencia de docdigital_descargar_archivo (que baja un solo archivo), esta herramienta: extrae texto de PDF/Word/Excel/TXT; expande y procesa el contenido de anexos ZIP; extrae asunto/remitente/destinatarios/cuerpo/adjuntos de anexos .msg; detecta enlaces a SharePoint u otros sitios externos y reporta si no se pudieron resolver; y entrega un resumen de completitud (cuantos archivos se esperaban vs. cuantos se lograron descargar/leer). Es de solo lectura: no visa, no rechaza ni acusa recibo. Usar esta herramienta cuando se necesite revisar un expediente completo con certeza de que no quedaron anexos sin revisar.",
+    {
+      id: z.union([z.string(), z.number()]).describe("Identificador de la comunicacion"),
+      incluir_principal: z.boolean().optional().describe("Incluir el documento principal (por defecto true)"),
+      incluir_anexos: z.boolean().optional().describe("Incluir todos los anexos (por defecto true)"),
+      extraer_zip: z.boolean().optional().describe("Extraer y procesar el contenido de anexos ZIP (por defecto true)"),
+      extraer_msg: z.boolean().optional().describe("Extraer asunto/remitente/cuerpo/adjuntos de anexos .msg (por defecto true)"),
+    },
+    async ({ id, incluir_principal, incluir_anexos, extraer_zip, extraer_msg }) => {
+      const detalle = await apiRequest("GET", `/documentos/${id}`);
+      const principal = detalle?.documento_principal;
+      const anexosRaw = Array.isArray(detalle?.documentos_anexos) ? detalle.documentos_anexos : [];
+
+      const itemsBase = [];
+      if ((incluir_principal ?? true) && principal) {
+        itemsBase.push({
+          archivo_id: principal.id,
+          nombre_original: principal.nombre_archivo,
+          tipo: "principal",
+          extension: extensionDe(principal.nombre_archivo),
+          mime_type: mimeDe(extensionDe(principal.nombre_archivo)),
+          orden: 0,
+          esExterno: false,
+        });
+      }
+      if (incluir_anexos ?? true) {
+        anexosRaw.forEach((a, i) => {
+          const esUrl = a.tipo === "ANEXO_URL";
+          itemsBase.push({
+            archivo_id: a.anexo_id || a.id,
+            nombre_original: a.nombre_archivo,
+            tipo: esUrl ? (esSharePoint(a.url_documento) ? "link_sharepoint" : "link_externo") : "anexo",
+            extension: extensionDe(a.nombre_archivo),
+            mime_type: mimeDe(extensionDe(a.nombre_archivo)),
+            orden: a.correlativo ?? i + 1,
+            esExterno: esUrl,
+            url_origen: esUrl ? a.url_documento : null,
+          });
+        });
+      }
+
+      const totalEsperados = itemsBase.length;
+      const inventarioFinal = [];
+      let totalExtraidosZip = 0;
+      let totalExtraidosMsg = 0;
+
+      for (const item of itemsBase.slice(0, MAX_ITEMS_INVENTARIO)) {
+        const { item: procesado, hijos } = await procesarItemInventario(item, {
+          comunicacionId: id,
+          extraerZip: extraer_zip ?? true,
+          extraerMsg: extraer_msg ?? true,
+        });
+        inventarioFinal.push(procesado);
+        for (const hijo of hijos) {
+          inventarioFinal.push(hijo);
+          if (hijo.tipo === "extraido_zip") totalExtraidosZip++;
+          if (hijo.tipo === "adjunto_msg") totalExtraidosMsg++;
+        }
+      }
+
+      // Adjuntar como recursos descargables (con limite de tamano total) y limpiar buffers internos del JSON
+      const contentAdicional = [];
+      let embebidoAcumulado = 0;
+      for (const it of inventarioFinal) {
+        const buffer = it._buffer;
+        delete it._buffer;
+        if (!buffer) continue;
+        if (buffer.length > EMBED_MAX_BYTES_POR_ARCHIVO) continue;
+        if (embebidoAcumulado + buffer.length > EMBED_MAX_BYTES_TOTAL) continue;
+        embebidoAcumulado += buffer.length;
+        it.archivo_adjunto = true;
+        contentAdicional.push({
+          type: "resource",
+          resource: {
+            uri: `docdigital://documentos/${id}/archivo/${it.archivo_id}`,
+            mimeType: it.mime_type,
+            blob: buffer.toString("base64"),
+            name: it.nombre_original || undefined,
+          },
+        });
+      }
+      inventarioFinal.forEach((it) => {
+        if (it.archivo_adjunto === undefined) it.archivo_adjunto = false;
+      });
+
+      const totalDescargados = inventarioFinal.filter((it) => it.descargado).length;
+      const totalNoDescargados = inventarioFinal.filter((it) => !it.descargado).length;
+      const fallas = inventarioFinal
+        .filter((it) => it.motivo_falla)
+        .map((it) => ({ archivo_id: it.archivo_id, nombre_original: it.nombre_original, motivo: it.motivo_falla }));
+      const noProcesadosPorLimite = itemsBase.length > MAX_ITEMS_INVENTARIO ? itemsBase.length - MAX_ITEMS_INVENTARIO : 0;
+
+      let completitud;
+      if (totalNoDescargados === 0 && noProcesadosPorLimite === 0) completitud = "completa";
+      else if (totalDescargados === 0) completitud = "insuficiente";
+      else completitud = "parcial";
+
+      const resumen = {
+        total_archivos_esperados: totalEsperados,
+        total_descargados: totalDescargados,
+        total_no_descargados: totalNoDescargados,
+        total_extraidos_zip: totalExtraidosZip,
+        total_extraidos_msg: totalExtraidosMsg,
+        no_procesados_por_limite: noProcesadosPorLimite,
+        hay_fallas: fallas.length > 0,
+        fallas,
+        completitud,
+      };
+
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ resumen, inventario: inventarioFinal }, null, 2) },
+          ...contentAdicional,
+        ],
+      };
+    }
   );
 
   server.tool(
