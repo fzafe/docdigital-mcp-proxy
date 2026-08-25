@@ -759,9 +759,11 @@ app.use(express.json());
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
+// Acepta el token por header (Bearer / X-API-Key) o embebido en la ruta /mcp/<token>:
+// los conectores personalizados de claude.ai no permiten configurar headers estaticos.
 function checkAuth(req, res) {
   const header = req.get("Authorization") || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : req.get("X-API-Key");
+  const token = header.startsWith("Bearer ") ? header.slice(7) : req.get("X-API-Key") || req.params.token;
   if (token !== PROXY_API_KEY) {
     res.status(401).json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "API key invalida o ausente" } });
     return false;
@@ -770,7 +772,7 @@ function checkAuth(req, res) {
 }
 
 // Servidor MCP stateless sobre HTTP: cada request crea su propia instancia (sin sesiones persistentes)
-app.post("/mcp", async (req, res) => {
+app.post(["/mcp", "/mcp/:token"], async (req, res) => {
   if (!checkAuth(req, res)) return;
   try {
     const server = buildServer();
@@ -788,7 +790,7 @@ app.post("/mcp", async (req, res) => {
   }
 });
 
-app.get("/mcp", (req, res) => {
+app.get(["/mcp", "/mcp/:token"], (req, res) => {
   res.status(405).json({ error: "Metodo no soportado: este servidor MCP es stateless, usa POST /mcp" });
 });
 
