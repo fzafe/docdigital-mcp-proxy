@@ -766,6 +766,115 @@ function buildServer({ readOnly = false } = {}) {
 }
 
 const app = express();
+
+// Private analysis relay: key stays in Railway; the Site retains its owner,
+// dossier, evidence and persistent anti-duplicate controls. No DocDigital writes.
+const reviewModel = process.env.OPENAI_REVIEW_MODEL || "gpt-5.4";
+const reviewAttempts = new Map(); // UUID/timestamps only, no documents or results.
+let analysisRunning = false;
+const analysisError = (res, status, code) => res.status(status).json({ error: { code } });
+app.use("/visaciones-ai", (req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  const expected = Buffer.from(VISACIONES_API_KEY || "");
+  const header = req.get("Authorization") || "";
+  const supplied = Buffer.from(header.startsWith("Bearer ") ? header.slice(7) : "");
+  if (!expected.length) return analysisError(res, 503, "relay_not_configured");
+  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied))
+    return analysisError(res, 401, "relay_unauthorized");
+  // This interface is server-to-server, never a browser API or a URL-token API.
+  if (req.get("Origin")) return analysisError(res, 403, "browser_request_not_allowed");
+  next();
+});
+function analysisKey(res) {
+  if (!process.env.OPENAI_API_KEY) {
+    analysisError(res, 503, "analysis_key_missing");
+    return null;
+  }
+  return process.env.OPENAI_API_KEY;
+}
+const safeOpenAICodes = new Set(["invalid_api_key", "insufficient_quota",
+  "credit_balance_exhausted", "rate_limit_exceeded", "model_not_found"]);
+async function upstreamError(response, res) {
+  let code;
+  try { code = (await response.json())?.error?.code; } catch { /* omit raw errors */ }
+  return analysisError(res, response.status, safeOpenAICodes.has(code) ? code : "analysis_upstream_error");
+}
+app.get("/visaciones-ai/status", async (req, res) => {
+  const apiKey = analysisKey(res);
+  if (!apiKey) return;
+  try {
+    const response = await fetch("https://api.openai.com/v1/models/" + encodeURIComponent(reviewModel), {
+      headers: { Authorization: `Bearer ${apiKey}` }, redirect: "error", signal: AbortSignal.timeout(12000),
+    });
+    if (!response.ok) return await upstreamError(response, res);
+    await response.body?.cancel();
+    res.json({ ok: true, model: reviewModel, generationTested: false });
+  } catch { analysisError(res, 502, "analysis_unavailable"); }
+});
+app.post("/visaciones-ai/responses", express.json({ limit: "16mb", inflate: false }), async (req, res) => {
+  const apiKey = analysisKey(res);
+  if (!apiKey) return;
+  const body = req.body;
+  if (body?.model !== reviewModel) return analysisError(res, 400, "model_mismatch");
+  const allowed = new Set(["model", "store", "instructions", "input", "max_output_tokens", "text"]);
+  const parts = body?.input?.[0]?.content;
+  if (Object.keys(body).some(k => !allowed.has(k)) || body.store !== false ||
+      typeof body.instructions !== "string" || body.instructions.length > 150000 ||
+      !Array.isArray(body.input) || body.input.length !== 1 || body.input[0]?.role !== "user" ||
+      !Array.isArray(parts) || !parts.length || parts.length > 100 ||
+      !Number.isInteger(body.max_output_tokens) || body.max_output_tokens < 1 || body.max_output_tokens > 12000 ||
+      body.text?.format?.type !== "json_schema" || body.text.format.strict !== true ||
+      body.text.format.name !== "revision_documental" || !body.text.format.schema ||
+      parts.filter(p => p?.type === "input_file").length > 20 ||
+      parts.some(p => !p || (p.type === "input_text"
+        ? typeof p.text !== "string" || Object.keys(p).some(k => !["type", "text"].includes(k))
+        : p.type !== "input_file" || typeof p.filename !== "string" || p.filename.length > 1000 ||
+          typeof p.file_data !== "string" || !/^data:application\/pdf;base64,[A-Za-z0-9+/]+={0,2}$/.test(p.file_data) ||
+          Object.keys(p).some(k => !["type", "filename", "file_data"].includes(k)))))
+    return analysisError(res, 400, "invalid_review_request");
+  const requestId = req.get("X-Visaciones-Request-Id") || "";
+  if (!/^[a-f0-9-]{36}$/i.test(requestId)) return analysisError(res, 400, "request_id_required");
+  const now = Date.now();
+  for (const [id, time] of reviewAttempts) if (now - time > 3600000) reviewAttempts.delete(id);
+  if (reviewAttempts.has(requestId)) return analysisError(res, 409, "analysis_duplicate");
+  if (analysisRunning) return analysisError(res, 409, "analysis_busy");
+  if (reviewAttempts.size >= 100) return analysisError(res, 429, "rate_limit_exceeded");
+  reviewAttempts.set(requestId, now);
+  analysisRunning = true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 170000);
+  const abort = () => { if (!res.writableEnded) controller.abort(); };
+  res.on("close", abort);
+  try {
+    // Reconstruct allowed fields; never forward tools, remote URLs, headers or arbitrary endpoints.
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST", redirect: "error", signal: controller.signal,
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: reviewModel, store: false, instructions: body.instructions,
+        input: [{ role: "user", content: parts }], max_output_tokens: body.max_output_tokens,
+        text: { format: { type: "json_schema", name: "revision_documental", strict: true, schema: body.text.format.schema } } }),
+    });
+    if (!response.ok) return await upstreamError(response, res);
+    const chunks = []; let length = 0;
+    for await (const chunk of response.body) {
+      length += chunk.length;
+      if (length > 2 * 1024 * 1024) { controller.abort(); throw new Error("response_limit"); }
+      chunks.push(chunk);
+    }
+    const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    // Return only the fields used by the Site; no upstream headers or request metadata.
+    res.json({ status: data.status, output: data.output, usage: data.usage });
+  } catch {
+    if (!res.headersSent && !res.destroyed) analysisError(res, 502, "analysis_unavailable");
+  } finally {
+    clearTimeout(timer); res.off("close", abort); analysisRunning = false;
+  }
+});
+// No other analysis endpoints or methods; errors never include submitted content.
+app.use("/visaciones-ai", (err, req, res, next) => {
+  analysisError(res, err.type === "entity.too.large" ? 413 : 400, "invalid_review_request");
+});
+app.use("/visaciones-ai", (req, res) => analysisError(res, 404, "analysis_route_not_found"));
 app.use(express.json());
 
 app.get("/health", (req, res) => res.json({ ok: true }));
