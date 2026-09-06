@@ -23,13 +23,13 @@ if (process.argv.includes('--child')) {
   };
   await import(process.env.RELAY_TEST_ENTRY || '../index.js');
 } else {
-  async function start(apiKey) {
+  async function start(apiKey, enabled = 'true') {
     const probe = createServer();
     await new Promise(r => probe.listen(0, '127.0.0.1', r));
     const port = probe.address().port;
     await new Promise(r => probe.close(r));
     const child = spawn(process.execPath, [import.meta.filename, '--child'], { env: {
-      ...process.env, PORT: String(port), OPENAI_API_KEY: apiKey, OPENAI_REVIEW_MODEL: 'gpt-5.4',
+      ...process.env, OPENAI_ANALYSIS_ENABLED: enabled, PORT: String(port), OPENAI_API_KEY: apiKey, OPENAI_REVIEW_MODEL: 'gpt-5.4',
       DOCDIGITAL_CLIENT_ID: 'synthetic-client', DOCDIGITAL_CLIENT_SECRET: 'synthetic-secret',
       PROXY_API_KEY: 'synthetic-legacy-key', VISACIONES_API_KEY: 'synthetic-site-key',
       DOCDIGITAL_BASE_URL: 'http://127.0.0.1:1',
@@ -86,5 +86,10 @@ if (process.argv.includes('--child')) {
     assert.equal(r.status, 503);
     assert.deepEqual(await r.json(), { error: { code: 'analysis_key_missing' } });
   } finally { await missing.close(); }
+  const disabled = await start('synthetic-openai-key', 'false');
+  try {
+    assert.equal((await fetch(disabled.url + '/visaciones-ai/status', { headers })).status, 403);
+    assert.equal((await fetch(disabled.url + '/visaciones-ai/responses', { method: 'POST', headers, body: JSON.stringify(body) })).status, 403);
+  } finally { await disabled.close(); }
   console.log('PASS: relay authentication, missing key, model check, complete PDF forwarding, no tools/remote URLs, duplicate suppression, safe errors and legacy MCP.');
 }

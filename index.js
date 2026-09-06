@@ -1,4 +1,5 @@
 import express from "express";
+import { mountBridgeRoutes, registerBridgeTools, bridgeRuntime } from './visaciones-bridge.js';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -762,10 +763,12 @@ function buildServer({ readOnly = false } = {}) {
       )
   );
 
+  if (!readOnly) registerBridgeTools(server);
   return server;
 }
 
 const app = express();
+mountBridgeRoutes(app);
 
 // Private analysis relay: key stays in Railway; the Site retains its owner,
 // dossier, evidence and persistent anti-duplicate controls. No DocDigital writes.
@@ -775,6 +778,7 @@ let analysisRunning = false;
 const analysisError = (res, status, code) => res.status(status).json({ error: { code } });
 app.use("/visaciones-ai", (req, res, next) => {
   res.set("Cache-Control", "no-store");
+  if (process.env.OPENAI_ANALYSIS_ENABLED !== 'true') return analysisError(res, 403, 'analysis_disabled');
   const expected = Buffer.from(VISACIONES_API_KEY || "");
   const header = req.get("Authorization") || "";
   const supplied = Buffer.from(header.startsWith("Bearer ") ? header.slice(7) : "");
@@ -875,7 +879,7 @@ app.use("/visaciones-ai", (err, req, res, next) => {
   analysisError(res, err.type === "entity.too.large" ? 413 : 400, "invalid_review_request");
 });
 app.use("/visaciones-ai", (req, res) => analysisError(res, 404, "analysis_route_not_found"));
-app.use(express.json());
+app.use(express.json({ limit: '180kb', inflate: false }));
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
@@ -946,4 +950,6 @@ app.get(["/mcp", "/mcp/:token"], (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`docdigital MCP HTTP server escuchando en puerto ${PORT}`);
+  try { bridgeRuntime().prune(); console.log('Visaciones MCP bridge: persistent storage ready; model API disabled by default.'); }
+  catch { console.log('Visaciones MCP bridge: persistent storage not configured.'); }
 });
