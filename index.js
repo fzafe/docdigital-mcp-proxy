@@ -15,6 +15,12 @@ const BASE_URL = process.env.DOCDIGITAL_BASE_URL || "https://api-demodoc.digital
 const CLIENT_ID = process.env.DOCDIGITAL_CLIENT_ID;
 const CLIENT_SECRET = process.env.DOCDIGITAL_CLIENT_SECRET;
 const PROXY_API_KEY = process.env.PROXY_API_KEY;
+// Independent, revocable credential for the private Visaciones Site.
+const VISACIONES_API_KEY = process.env.VISACIONES_API_KEY;
+const VISACIONES_READ_TOOLS = new Set([
+  "docdigital_detalle_comunicacion",
+  "docdigital_descargar_todos_archivos",
+]);
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error("Faltan DOCDIGITAL_CLIENT_ID / DOCDIGITAL_CLIENT_SECRET en el entorno.");
@@ -398,10 +404,15 @@ async function procesarItemInventario(item, { comunicacionId, extraerZip, extrae
   return { item: resultado, hijos };
 }
 
-function buildServer() {
+function buildServer({ readOnly = false } = {}) {
   const server = new McpServer({ name: "docdigital", version: "1.0.0" });
 
-  server.tool(
+  const registerTool = (name, ...args) => {
+    if (!readOnly || VISACIONES_READ_TOOLS.has(name))
+      return server.tool(name, ...args);
+  };
+
+  registerTool(
     "docdigital_listar_recibidos",
     "Lista las comunicaciones oficiales recibidas por la entidad autenticada en DocDigital. IMPORTANTE: DocDigital exige el parametro notificado en produccion — llamar este endpoint sin filtro devuelve el historico completo y la peticion cae por timeout (HTTP 504), confirmado por soporte de DocDigital.",
     {
@@ -416,7 +427,7 @@ function buildServer() {
       toolResult(await apiRequest("GET", "/documentos/recibidos", { query: { notificado: notificado ?? false } }))
   );
 
-  server.tool(
+  registerTool(
     "docdigital_pendientes_mas_antiguos",
     "Obtiene las comunicaciones recibidas que aun estan con estado 'Pendiente acuse' para la entidad autenticada, ordenadas de la mas antigua a la mas reciente segun la fecha de creacion del documento principal. Usar esta herramienta (en vez de docdigital_listar_recibidos) para procesar la cola de pendientes en orden.",
     {
@@ -437,7 +448,7 @@ function buildServer() {
     }
   );
 
-  server.tool(
+  registerTool(
     "docdigital_buscar_documentos",
     "Busca documentos de DocDigital usando el endpoint /documentos/buscar con filtros flexibles. Por defecto se acota a la entidad del token (JUNJI). Usar siempre con estadoTramitacion o algun otro filtro: sin filtros retorna el historico completo y la peticion cae por timeout.",
     {
@@ -481,7 +492,7 @@ function buildServer() {
     }
   );
 
-  server.tool(
+  registerTool(
     "docdigital_mis_pendientes_visar",
     "Obtiene los documentos con estado 'Pendiente de visacion' en DocDigital donde Felipe Ignacio Zafe Contreras (Jefe de Gabinete, Junta Nacional de Jardines Infantiles) figura como visador. Recorre las paginas del endpoint de busqueda de DocDigital y filtra por nombre de visador, porque el filtro nativo de la API por visador (runVisador/nombreVisador) esta deprecado y no es confiable. LIMITACION CONOCIDA: no se puede distinguir de forma confiable si el documento esta pendiente especificamente en la etapa de Felipe o en otra etapa de la cadena de visacion; puede incluir documentos donde Felipe ya visto o donde el turno actual es de otra persona.",
     {
@@ -523,7 +534,7 @@ function buildServer() {
     }
   );
 
-  server.tool(
+  registerTool(
     "docdigital_detalle_comunicacion",
     "Obtiene el detalle de una comunicacion de DocDigital por su identificador: destinatarios, firmantes, visadores, documento principal y anexos. Incluye ademas un resumen con campos explicitos (tema_literal_docdigital, tipo_acto, etapa_actual, archivos_disponibles, etc.) pensados para que el agente no tenga que inferirlos del JSON crudo.",
     { id: z.union([z.string(), z.number()]).describe("Identificador de la comunicacion") },
@@ -572,7 +583,7 @@ function buildServer() {
     }
   );
 
-  server.tool(
+  registerTool(
     "docdigital_descargar_todos_archivos",
     "Descarga el documento principal y todos los anexos de una comunicacion de DocDigital de una sola vez, con inventario completo y trazabilidad. A diferencia de docdigital_descargar_archivo (que baja un solo archivo), esta herramienta: extrae texto de PDF/Word/Excel/TXT; expande y procesa el contenido de anexos ZIP; extrae asunto/remitente/destinatarios/cuerpo/adjuntos de anexos .msg; detecta enlaces a SharePoint u otros sitios externos y reporta si no se pudieron resolver; y entrega un resumen de completitud (cuantos archivos se esperaban vs. cuantos se lograron descargar/leer). Es de solo lectura: no visa, no rechaza ni acusa recibo. Usar esta herramienta cuando se necesite revisar un expediente completo con certeza de que no quedaron anexos sin revisar.",
     {
@@ -693,7 +704,7 @@ function buildServer() {
     }
   );
 
-  server.tool(
+  registerTool(
     "docdigital_descargar_archivo",
     "Descarga un archivo (documento principal o anexo) de una comunicacion de DocDigital y lo entrega como adjunto PDF legible, no como texto.",
     {
@@ -723,7 +734,7 @@ function buildServer() {
     }
   );
 
-  server.tool(
+  registerTool(
     "docdigital_acuse_recibo",
     "Da acuse de recibido (aceptacion) a una comunicacion pendiente recibida en DocDigital.",
     {
@@ -734,7 +745,7 @@ function buildServer() {
       toolResult(await apiRequest("PUT", `/documentos/recibidos/${id}/acusorecibo`, { query: { entidadDestinataria } }))
   );
 
-  server.tool(
+  registerTool(
     "docdigital_rechazar_comunicacion",
     "Rechaza (devuelve) una comunicacion pendiente recibida en DocDigital, indicando el motivo del rechazo.",
     {
@@ -787,6 +798,36 @@ app.post(["/mcp", "/mcp/:token"], async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ jsonrpc: "2.0", id: null, error: { code: -32603, message: err.message } });
     }
+  }
+});
+
+// Visaciones never inherits the full MCP credential or mutation tools.
+app.post("/mcp-visaciones", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  const header = req.get("Authorization") || "";
+  const supplied = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!VISACIONES_API_KEY) {
+    return res.status(503).json({ error: "Conexion del visor no habilitada" });
+  }
+  const expectedBytes = Buffer.from(VISACIONES_API_KEY);
+  const suppliedBytes = Buffer.from(supplied);
+  if (suppliedBytes.length !== expectedBytes.length ||
+      !crypto.timingSafeEqual(suppliedBytes, expectedBytes)) {
+    return res.status(401).json({ error: "API key invalida o ausente" });
+  }
+  try {
+    const server = buildServer({ readOnly: true });
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    res.on("close", () => {
+      transport.close();
+      server.close();
+    });
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } catch {
+    if (!res.headersSent)
+      res.status(500).json({ jsonrpc: "2.0", id: req.body?.id ?? null,
+        error: { code: -32603, message: "No se pudo completar la lectura" } });
   }
 });
 
